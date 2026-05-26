@@ -1,0 +1,138 @@
+const axios = require('axios');
+const { Pool } = require('pg');
+const cron = require('node-cron');
+require('dotenv').config();
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL
+});
+
+// Scraper Vinted
+async function scrapeVinted(filter) {
+  try {
+    const params = {
+      search_text: filter.keywords?.join(' ') || '',
+      catalog_ids: filter.category || '',
+      brand_ids: filter.brands?.join(',') || '',
+      price_to: filter.budget || '',
+      per_page: 96
+    };
+
+    const response = await axios.get('https://www.vinted.fr/api/v2/catalog/items', {
+      params,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'application/json',
+      }
+    });
+
+    return response.data.items || [];
+
+  } catch (error) {
+    console.error('Erreur scraping:', error.message);
+    return [];
+  }
+}
+
+// Calculer la réduction
+function calculateDiscount(price, originalPrice) {
+  if (!originalPrice || originalPrice <= 0) return 0;
+  return Math.round(((originalPrice - price) / originalPrice) * 100);
+}
+
+// Vérifier si l'article matche un filtre
+function matchesFilter(item, filter) {
+  const price = parseFloat(item.price?.amount || 0);
+  const originalPrice = parseFloat(item.original_price?.amount || price);
+  const discount = calculateDiscount(price, originalPrice);
+
+  // Vérif réduction minimum
+  if (filter.discount && discount < filter.discount) return false;
+
+  // Vérif budget max
+  if (filter.budget && price > filter.budget) return false;
+
+  // Vérif taille
+  if (filter.sizes?.length > 0 && !filter.sizes.includes(item.size_title)) return false;
+
+  return true;
+}
+
+// Sauvegarder un deal en BDD
+async function saveDeal(item, discount) {
+  try {
+    const existing = await pool.query(
+      'SELECT id FROM deals WHERE url = $1',
+      [item.url]
+    );
+
+    if (existing.rows.length > 0) return; // déjà en BDD
+
+    await pool.query(
+      `INSERT INTO deals (name, brand, price, original_price, score, condition, city, url, category, image)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      [
+        item.title,
+        item.brand_title,
+        parseFloat(item.price?.amount || 0),
+        parseFloat(item.original_price?.amount || 0),
+        discount,
+        item.status,
+        item.city || 'Non précisé',
+        `https://www.vinted.fr/items/${item.id}`,
+        item.catalogue_name,
+        item.photo?.url
+      ]
+    );
+
+    console.log(`✅ Deal sauvegardé : ${item.title} (-${discount}%)`);
+
+  } catch (error) {
+    console.error('Erreur sauvegarde deal:', error.message);
+  }
+}
+
+// Fonction principale du bot
+async function runBot() {
+  console.log('🤖 Bot lancé à', new Date().toLocaleTimeString());
+
+  try {
+    // Récupère tous les filtres actifs
+    const filtersResult = await pool.query(
+      'SELECT * FROM filters WHERE active = true'
+    );
+
+    const filters = filtersResult.rows;
+
+    if (filters.length === 0) {
+      console.log('Aucun filtre actif trouvé.');
+      return;
+    }
+
+    for (const filter of filters) {
+      console.log(`🔍 Scan avec le filtre : ${filter.name}`);
+
+      const items = await scrapeVinted(filter);
+      console.log(`📦 ${items.length} articles trouvés`);
+
+      for (const item of items) {
+        const price = parseFloat(item.price?.amount || 0);
+        const originalPrice = parseFloat(item.original_price?.amount || price);
+        const discount = calculateDiscount(price, originalPrice);
+
+        if (matchesFilter(item, filter)) {
+          await saveDeal(item, discount);
+        }
+      }
+    }
+
+  } catch (error) {
+    console.error('Erreur bot:', error.message);
+  }
+}
+
+// Lancer le bot toutes les 10 minutes
+cron.schedule('*/10 * * * *', runBot);
+
+// Lancer une première fois immédiatement
+runBot();
