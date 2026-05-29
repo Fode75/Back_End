@@ -1,19 +1,14 @@
 // src/db/database.js
-// Connexion à PostgreSQL via le package "pg"
-
 const { Pool } = require('pg')
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: false  // pas de SSL sur Coolify en réseau interne
+  ssl: false
 })
 
-pool.connect((err) => {
-  if (err) {
-    console.error('❌ Erreur connexion base de données:', err.message)
-  } else {
-    console.log('✅ Connecté à PostgreSQL')
-  }
-})
+// On teste juste la connexion sans la garder ouverte
+pool.query('SELECT 1')
+  .then(() => console.log('✅ Connecté à PostgreSQL'))
+  .catch(err => console.error('❌ Erreur BDD:', err.message))
 
 module.exports = pool
