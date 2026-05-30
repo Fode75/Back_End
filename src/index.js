@@ -1,5 +1,5 @@
-// src/server.js
-// Point d'entrée du backend
+// src/index.js
+// Point d'entrée du backend — nom imposé par le Dockerfile du prof
 
 require('dotenv').config()
 
@@ -15,8 +15,7 @@ const aiRoutes = require('./routes/ai')
 const app = express()
 const PORT = process.env.PORT || 3000
 
-// cors() sans paramètre = accepte toutes les origines
-// C'est ok pour un projet étudiant
+// Accepte toutes les origines (ok pour un projet étudiant)
 app.use(cors())
 app.use(express.json())
 
@@ -26,7 +25,7 @@ app.use('/api/filters', filtersRoutes)
 app.use('/api/settings', settingsRoutes)
 app.use('/api', aiRoutes)
 
-// Route de test : GET / → vérifie que le serveur tourne
+// Route de test
 app.get('/', (req, res) => {
   res.json({ message: '✅ VintedBot API is running!' })
 })
