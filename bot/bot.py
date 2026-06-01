@@ -1,6 +1,6 @@
-# bot/bot.py
-# Bot Vinted — scrape les annonces et envoie les bons plans à l'API backend.
-# Pour lancer : python bot/bot.py
+#!/usr/bin/env python3
+# bot/bot.py — Bot Vinted fonctionnel
+# Lance avec : python bot/bot.py
 
 import requests
 import time
@@ -9,55 +9,82 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-API_URL      = os.getenv("API_URL", "http://localhost:3000")
-BOT_TOKEN    = os.getenv("BOT_TOKEN")
-MIN_DISCOUNT = int(os.getenv("MIN_DISCOUNT", "40"))
+API_URL       = os.getenv("API_URL", "http://localhost:3000")
+BOT_TOKEN     = os.getenv("BOT_TOKEN", "")
+MIN_DISCOUNT  = int(os.getenv("MIN_DISCOUNT", "40"))
 SCAN_INTERVAL = int(os.getenv("SCAN_INTERVAL", "5"))
+KEYWORDS      = os.getenv("KEYWORDS", "jordan 1,north face,jacquemus,carhartt").split(",")
 
-KEYWORDS = ["jordan 1", "north face", "jacquemus", "carhartt"]
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    "Accept": "application/json",
+    "Accept-Language": "fr-FR,fr;q=0.9",
+}
 
 def search_vinted(keyword):
-    print(f"  🔍 Recherche : {keyword}")
+    """Cherche des annonces sur Vinted."""
+    print(f"  🔍 {keyword.strip()}")
     try:
-        url = "https://www.vinted.fr/api/v2/catalog/items"
-        params = { "search_text": keyword, "per_page": 20, "order": "newest_first" }
-        headers = { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" }
-        response = requests.get(url, params=params, headers=headers, timeout=10)
-        if response.status_code != 200:
-            return []
-        return response.json().get("items", [])
+        r = requests.get(
+            "https://www.vinted.fr/api/v2/catalog/items",
+            params={"search_text": keyword.strip(), "per_page": 20, "order": "newest_first"},
+            headers=HEADERS,
+            timeout=10
+        )
+        if r.status_code == 200:
+            return r.json().get("items", [])
+        print(f"  ⚠️  Vinted {r.status_code}")
+        return []
     except Exception as e:
-        print(f"  ❌ Erreur : {e}")
+        print(f"  ❌ {e}")
         return []
 
+def get_price(item, key):
+    """Récupère un prix depuis l'objet Vinted."""
+    try:
+        return float(item.get(key, {}).get("amount", 0) or 0)
+    except:
+        return 0.0
+
 def calculate_score(item):
+    """Score de 0 à 100 basé sur la réduction, l'état et les photos."""
     score = 0
-    price    = float(item.get("price", {}).get("amount", 0))
-    original = float(item.get("original_item_price", {}).get("amount", 0) or 0)
+    price    = get_price(item, "price")
+    original = get_price(item, "original_item_price")
+
+    # Réduction
     if original > 0 and price > 0:
-        discount = ((original - price) / original) * 100
-        if discount >= 70:   score += 50
-        elif discount >= 50: score += 35
-        elif discount >= 30: score += 20
-    condition = item.get("status", "")
-    if condition == "new_with_tags": score += 30
-    elif condition == "very_good":   score += 20
-    elif condition == "good":        score += 10
-    photos = len(item.get("photos", []))
-    if photos >= 3:   score += 20
-    elif photos >= 1: score += 10
+        d = (original - price) / original * 100
+        if d >= 70:   score += 50
+        elif d >= 50: score += 35
+        elif d >= 30: score += 20
+
+    # État
+    cond = item.get("status", "")
+    if cond == "new_with_tags":   score += 30
+    elif cond == "very_good":     score += 20
+    elif cond == "good":          score += 10
+
+    # Photos
+    n = len(item.get("photos", []))
+    if n >= 3:   score += 20
+    elif n >= 1: score += 10
+
     return min(score, 100)
 
 def is_good_deal(item):
-    price    = float(item.get("price", {}).get("amount", 0))
-    original = float(item.get("original_item_price", {}).get("amount", 0) or 0)
-    if original == 0 or price == 0:
-        return False
-    return ((original - price) / original) * 100 >= MIN_DISCOUNT
+    """Vérifie si la réduction dépasse le seuil."""
+    price    = get_price(item, "price")
+    original = get_price(item, "original_item_price")
+    if price <= 0 or original <= 0: return False
+    return (original - price) / original * 100 >= MIN_DISCOUNT
 
 def send_to_api(item, score):
-    price    = float(item.get("price", {}).get("amount", 0))
-    original = float(item.get("original_item_price", {}).get("amount", 0) or 0)
+    """Envoie le deal à l'API backend."""
+    price    = get_price(item, "price")
+    original = get_price(item, "original_item_price")
+    photos   = item.get("photos", [])
+
     deal = {
         "name":          item.get("title", ""),
         "brand":         item.get("brand_title", ""),
@@ -66,27 +93,31 @@ def send_to_api(item, score):
         "score":         score,
         "condition":     item.get("status", ""),
         "city":          item.get("city", ""),
-        "url":           f"https://www.vinted.fr/items/{item.get('id')}",
+        "url":           f"https://www.vinted.fr/items/{item.get('id', '')}",
         "category":      item.get("catalog_branch_title", ""),
-        "image":         item.get("photos", [{}])[0].get("url", "") if item.get("photos") else "",
+        "image":         photos[0].get("url", "") if photos else "",
     }
+
     try:
-        response = requests.post(
+        r = requests.post(
             f"{API_URL}/api/deals",
             json=deal,
-            headers={"Authorization": f"Bearer {BOT_TOKEN}"},
+            headers={"Authorization": f"Bearer {BOT_TOKEN}", "Content-Type": "application/json"},
             timeout=10
         )
-        if response.status_code == 201:
-            print(f"  ✅ Deal envoyé : {deal['name']} — {price}€")
+        if r.status_code == 201:
+            discount = round((original - price) / original * 100) if original > 0 else 0
+            print(f"  ✅ {deal['name'][:50]} — {price}€ (−{discount}%) [score: {score}]")
             return True
+        print(f"  ⚠️  API {r.status_code}: {r.text[:100]}")
         return False
     except Exception as e:
-        print(f"  ❌ Erreur API : {e}")
+        print(f"  ❌ API error: {e}")
         return False
 
 def scan():
-    print(f"\n🤖 Scan démarré...")
+    """Lance un scan complet."""
+    print(f"\n🤖 Scan démarré ({len(KEYWORDS)} mots-clés)...")
     total = 0
     for keyword in KEYWORDS:
         items = search_vinted(keyword)
@@ -95,13 +126,30 @@ def scan():
                 score = calculate_score(item)
                 if send_to_api(item, score):
                     total += 1
-        time.sleep(1)
-    print(f"✅ Scan terminé — {total} bon(s) plan(s)")
+        time.sleep(2)  # pause entre chaque mot-clé pour éviter le rate limiting
+    print(f"✅ Scan terminé — {total} bon(s) plan(s) envoyé(s)")
+    return total
 
 if __name__ == "__main__":
-    print("🚀 VintedBot démarré !")
-    print(f"   Intervalle : {SCAN_INTERVAL} min | Réduction min : {MIN_DISCOUNT}%")
+    print("=" * 50)
+    print("🚀 VintedBot démarré")
+    print(f"   API      : {API_URL}")
+    print(f"   Intervalle : {SCAN_INTERVAL} min")
+    print(f"   Réduction min : {MIN_DISCOUNT}%")
+    print(f"   Mots-clés : {', '.join(KEYWORDS)}")
+    print("=" * 50)
+
+    if not BOT_TOKEN:
+        print("⚠️  BOT_TOKEN manquant dans .env — les deals ne seront pas enregistrés")
+
     while True:
-        scan()
+        try:
+            scan()
+        except KeyboardInterrupt:
+            print("\n⛔ Bot arrêté.")
+            break
+        except Exception as e:
+            print(f"❌ Erreur inattendue: {e}")
+
         print(f"\n⏳ Prochain scan dans {SCAN_INTERVAL} minutes...")
         time.sleep(SCAN_INTERVAL * 60)

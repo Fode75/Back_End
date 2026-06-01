@@ -1,6 +1,4 @@
 // prisma/schema.prisma
-// Définition des tables de la base de données
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -11,10 +9,10 @@ datasource db {
 }
 
 model User {
-  id        Int      @id @default(autoincrement())
-  email     String   @unique
+  id        Int       @id @default(autoincrement())
+  email     String    @unique
   password  String
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
   filters   Filter[]
   settings  Settings?
 }

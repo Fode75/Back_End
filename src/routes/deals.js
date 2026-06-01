@@ -1,54 +1,27 @@
 // src/routes/deals.js
 const express = require('express')
 const prisma = require('../prisma')
-const authMiddleware = require('../middleware/auth')
-
+const auth = require('../middleware/auth')
 const router = express.Router()
 
-// GET /api/deals
-router.get('/', authMiddleware, async (req, res) => {
+router.get('/', auth, async (req, res) => {
   try {
     const { category } = req.query
     const where = category && category !== 'Tous' ? { category } : {}
-    const deals = await prisma.deal.findMany({
-      where,
-      orderBy: { createdAt: 'desc' }
-    })
+    const deals = await prisma.deal.findMany({ where, orderBy: { createdAt: 'desc' } })
     res.json(deals)
-  } catch (err) {
-    res.status(500).json({ message: 'Erreur serveur.' })
-  }
+  } catch { res.status(500).json({ message: 'Erreur serveur.' }) }
 })
 
-// GET /api/deals/:id
-router.get('/:id', authMiddleware, async (req, res) => {
-  try {
-    const deal = await prisma.deal.findUnique({
-      where: { id: parseInt(req.params.id) }
-    })
-    if (!deal) return res.status(404).json({ message: 'Deal introuvable.' })
-    res.json(deal)
-  } catch (err) {
-    res.status(500).json({ message: 'Erreur serveur.' })
-  }
-})
-
-// POST /api/deals — utilisé par le bot
 router.post('/', async (req, res) => {
   const { name, brand, price, originalPrice, score, condition, city, url, category, image } = req.body
-
-  if (!name || !price) {
-    return res.status(400).json({ message: 'Nom et prix requis.' })
-  }
-
+  if (!name || !price) return res.status(400).json({ message: 'Nom et prix requis.' })
   try {
     const deal = await prisma.deal.create({
       data: { name, brand, price: parseFloat(price), originalPrice: parseFloat(originalPrice) || null, score: parseInt(score) || 0, condition, city, url, category, image }
     })
     res.status(201).json(deal)
-  } catch (err) {
-    res.status(500).json({ message: 'Erreur serveur.' })
-  }
+  } catch { res.status(500).json({ message: 'Erreur serveur.' }) }
 })
 
 module.exports = router
