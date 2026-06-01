@@ -11,8 +11,12 @@ const aiRoutes = require('./routes/ai')
 
 const app = express()
 const PORT = process.env.PORT || 3000
+const frontendOrigin = process.env.FRONTEND_URL || 'https://vinted.octilabs.com'
 
-app.use(cors())
+app.use(cors({
+  origin: [frontendOrigin, 'http://localhost:5173', 'http://localhost:3000'],
+  credentials: true,
+}))
 app.use(express.json())
 
 app.use('/api/auth', authRoutes)
