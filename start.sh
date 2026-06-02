@@ -1,6 +1,6 @@
 #!/bin/sh
 set -e
-npx prisma db push
+npx prisma db push --accept-data-loss
 
 if [ "$RUN_BOT" = "true" ]; then
   echo "Demarrage du bot Vinted..."
