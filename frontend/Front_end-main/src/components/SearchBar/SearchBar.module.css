@@ -1,0 +1,7 @@
+.wrap { position: relative; display: flex; align-items: center; width: 100%; max-width: 440px; }
+.icon { position: absolute; left: 14px; font-size: 0.85rem; pointer-events: none; }
+.input { width: 100%; padding: 0.7rem 2.8rem; border: 1px solid var(--border); border-radius: 999px; font-family: var(--font-body); font-size: 0.9rem; background: var(--bg-surface); color: var(--text); outline: none; transition: border-color 0.2s, box-shadow 0.2s; }
+.input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+.input::placeholder { color: var(--muted); opacity: 0.6; }
+.clear { position: absolute; right: 14px; background: none; border: none; font-size: 0.78rem; color: var(--muted); transition: color 0.2s; }
+.clear:hover { color: var(--accent); }
