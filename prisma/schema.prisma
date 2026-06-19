@@ -1,0 +1,66 @@
+// prisma/schema.prisma — tables PostgreSQL Render (snake_case)
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        Int       @id @default(autoincrement())
+  email     String    @unique
+  password  String
+  createdAt DateTime  @default(now()) @map("created_at")
+  filters   Filter[]
+  settings  Settings?
+
+  @@map("users")
+}
+
+model Deal {
+  id            Int      @id @default(autoincrement())
+  name          String
+  brand         String?
+  price         Float
+  originalPrice Float?   @map("original_price")
+  score         Int      @default(0)
+  condition     String?
+  city          String?
+  url           String?
+  category      String?
+  image         String?
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@map("deals")
+}
+
+model Filter {
+  id       Int     @id @default(autoincrement())
+  userId   Int     @map("user_id")
+  user     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name     String
+  active   Boolean @default(true)
+  brands   String?
+  budget   Float?
+  discount Int     @default(40)
+  keywords String?
+  sizes    String?
+
+  @@map("filters")
+}
+
+model Settings {
+  id           Int     @id @default(autoincrement())
+  userId       Int     @unique @map("user_id")
+  user         User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  minDiscount  Int     @default(40) @map("min_discount")
+  minScore     Int     @default(70) @map("min_score")
+  scanInterval Int     @default(5) @map("scan_interval")
+  telegram     Boolean @default(true)
+  discord      Boolean @default(false)
+  email        Boolean @default(true)
+
+  @@map("settings")
+}
